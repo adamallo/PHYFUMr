@@ -3,7 +3,7 @@
 # Package environment to cache data and store defaults
 .phyfumr_env <- new.env(parent = emptyenv())
 
-# Making the default prior parameters available in the .pkg_env
+# Getting configurations and data loaded on load
 .onLoad <- function(libname, pkgname) {
   utils::data("default_prior_settings", package = pkgname, envir = .phyfumr_env)
   utils::data("default_model_params", package = pkgname, envir = .phyfumr_env)
@@ -34,6 +34,18 @@
 
   # Avoiding spurious Rplots.pdf
   if(!interactive()) grDevices::pdf(NULL)
+
+  # Phyfumr's default valid difference between floating point numbers to be considered equal
+  .phyfumr_env[['precision']] <- 1E-6
+
+  # System dependencies
+  .phyfumr_env[['treeannotator']] <- system2('which',
+                                             'treeannotator',
+                                             stdout = F,
+                                             stderr = F) == 0
+  if (.phyfumr_env[['treeannotator']] == FALSE){
+    warning("The system dependency treeannotator's executable is not in the PATH environment variable. PHYFUMr will not be able to summarize the posterior sample into a maximum clade credibility (MCC) tree")
+  }
 }
 
 # Silencing devtools::check with data.table syntax
@@ -75,5 +87,11 @@ utils::globalVariables(c("loadedCSVs",
                          "min_S",
                          "S",
                          "selected",
-                         "valid_method"))
+                         "valid_method",
+                         "method",
+                         "pp",
+                         "pp_min_S",
+                         "pp_max_S",
+                         "expected_samples_max_S",
+                         "expected_samples_min_S"))
 

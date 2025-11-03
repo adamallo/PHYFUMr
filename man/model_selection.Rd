@@ -26,7 +26,7 @@ model_selection(
 }
 \arguments{
 \item{in_dir}{input directory where the MLE.csv files resulting from
-\code{\link[=mcmc_qc]{mcmc_qc()}} or \code{\link[=mcmc_qc_condition]{mcmc_qc_condition()}} are}
+\code{\link[=mcmc_qc]{mcmc_qc()}} or \code{\link[=mcmc_qc_condition]{mcmc_qc_condition()}} are located}
 
 \item{out_dir}{output directory to write .csv files with model selection
 information}

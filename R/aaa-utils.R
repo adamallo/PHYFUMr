@@ -2,7 +2,7 @@
 
 #' Uses pblapply or lapply depending on their availability
 #'
-#' @inherit base::lapply
+#' @inheritParams  base::lapply
 #' @inheritDotParams pbapply::pblapply cl
 #'
 #' @keywords internal
@@ -16,6 +16,17 @@ slapply <- function(X, FUN, ...) {
   } else {
     return(pbapply::pblapply(X = X, FUN = FUN, ...))
   }
+}
+
+#' Gets the variable names from a list
+#'
+#' @param ... objects to get the name of
+#'
+#' @returns vector of names
+#' @export
+
+names_from_objects <- function(...) {
+  as.character(substitute(list(...)))[-1]
 }
 
 #' Run a bundled script

@@ -11,7 +11,7 @@
 #'   data for all the S to work and uses that one.
 #'
 #' @param in_dir input directory where the MLE.csv files resulting from
-#'   [mcmc_qc()] or [mcmc_qc_condition()] are
+#'   [mcmc_qc()] or [mcmc_qc_condition()] are located
 #' @param out_dir output directory to write .csv files with model selection
 #'   information
 #' @param plot_dir plot output directory

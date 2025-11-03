@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 library(phyfumr)
 #Config that is not expected to change
 #######################################

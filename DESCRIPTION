@@ -15,6 +15,7 @@ LazyData: true
 Remotes:
     rwty=adamallo/RWTY
 Imports: 
+    ape,
     cowplot,
     data.table,
     emdist,
@@ -23,6 +24,7 @@ Imports:
     HDInterval,
     ks,
     LaplacesDemon,
+    lubridate,
     matrixStats,
     methods,
     rlang,

@@ -2,7 +2,7 @@
 % Please edit documentation in R/mcmc_qc.R
 \name{fix_nexus}
 \alias{fix_nexus}
-\title{Fixes nexus files of unfinished phyfum runs}
+\title{Fixes NEXUS files of unfinished PHYFUM runs}
 \usage{
 fix_nexus(file, backup = TRUE)
 }
@@ -16,5 +16,5 @@ be created before fixing the file}
 TRUE if the file has been fixed, FALSE if it didn't need fixing
 }
 \description{
-Fixes nexus files of unfinished phyfum runs
+Fixes NEXUS files of unfinished PHYFUM runs
 }
