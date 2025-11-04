@@ -47,7 +47,7 @@ fix_nexus_content <- function(nexus_content){
 
   n_lines <- length(nexus_content)
 
-  if(!grepl("END;|ENDBLOCK;", nexus_content[n_lines], ignore.case = TRUE)){
+  if(length(nexus_content[n_lines])==0 || !grepl("END;|ENDBLOCK;", nexus_content[n_lines], ignore.case = TRUE)){
     nexus_content <- c(nexus_content,"End;")
   }
   return(nexus_content)
@@ -81,10 +81,14 @@ load_trace <- function(treefile,logfile=NULL,burnin_p=0.1){
 
   #trees
   con <- file(treefile, open = "r")
-  trees_content <- readLines(con)
+  trees_content <- suppressWarnings(readLines(con))
   close(con)
 
   fixed_trees_content <- fix_nexus_content(trees_content)
+
+  if(length(fixed_trees_content)==1){
+    stop("ERROR: empty trace")
+  }
 
   trees_con <- textConnection(fixed_trees_content)
   trace$trees <- ape::read.nexus(trees_con)

@@ -109,6 +109,7 @@ model_selection <- function(in_dir,
                                        lML,S,selected=max(lML)-lML<=min_lbf,min_S=min(S),max_S=max(S),
                                        extreme_best=lML==data.table::first(lML)&(S==max(S)|S==min(S)),
                                        extreme_valid=max(lML)-lML<=min_lbf&(S==max(S)|S==min(S))),by=method]
+    data.table::setnames(new_data,old=c("V2"),new=c(cond_col))
     new_data[method=="AICm",`:=`(lML=lML*-1,selected=NA)]
     return(data.table::merge.data.table(new_data,method_analysis,by = "method",all.x = TRUE))
   },min_lbf=min_lbf),idcol = "patient")
@@ -129,11 +130,11 @@ model_selection <- function(in_dir,
                   all_output_suffix,
                   out_dir)
 
-  check_write_csv(all_mle_data_with_selection_stats[extreme_best==T,],
+  check_write_csv(all_mle_data_with_selection_stats[extreme_best==T,.(patient,method,S,lML)],
                   extreme_selected_output_suffix,
                   out_dir)
 
-  check_write_csv(all_mle_data_with_selection_stats[extreme_valid==T & method!="AICm",],
+  check_write_csv(all_mle_data_with_selection_stats[extreme_valid==T & method!="AICm",.(patient,method,S,lML)],
                   extreme_valid_output_suffix,
                   out_dir)
 
@@ -149,12 +150,12 @@ model_selection <- function(in_dir,
                       out_dir,
                       paste(sep="_",patient,selected_output_suffix))
 
-      check_write_csv(all_mle_data_with_selection_stats[extreme_best==T & patient==this_patient,],
+      check_write_csv(all_mle_data_with_selection_stats[extreme_best==T & patient==this_patient,.(patient,method,S,lML)],
                       extreme_selected_output_suffix,
                       out_dir,
                       paste(sep="_",patient,extreme_selected_output_suffix))
 
-      check_write_csv(all_mle_data_with_selection_stats[extreme_valid==T & method!="AICm" & patient==this_patient,],
+      check_write_csv(all_mle_data_with_selection_stats[extreme_valid==T & method!="AICm" & patient==this_patient,.(patient,method,S,lML)],
                       extreme_valid_output_suffix,
                       out_dir,
                       paste(sep="_",patient,extreme_valid_output_suffix))
