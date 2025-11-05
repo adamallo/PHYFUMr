@@ -101,9 +101,9 @@ remove_burnin_chains <- function(chains,burnin_p) {
 
 #' Load phyfum posterior samples
 #'
-#' @param trees_files list of phyfum's output .trees files (one per independent
+#' @param trees_files array of phyfum's output .trees files (one per independent
 #'   run)
-#' @param log_files list of phyfum's output .log files (one per independent
+#' @param log_files array of phyfum's output .log files (one per independent
 #'   run). If not used, this function will assume they have the same name and
 #'   location as their .trees counterparts
 #' @inheritParams remove_burnin_chains
