@@ -430,6 +430,285 @@ get_summary_tree_from_trees <- function(trees,
   return(return_tree)
 }
 
+#' Marginalize posteriors over S for a single patient
+#'
+#' This function uses Bayesian Model Averaging to marginalize over S. It can
+#' generate posterior samples, continuous parameter estimates, and point tree
+#' estimates.
+#'
+#' @details If a mle_file is provided and certain conditions do not have a
+#'   probability in the MLE file but they do have data, the data is not
+#'   considered and a warning is generated.
+#'
+#' @inheritParams load_condition_traces
+#' @param out_dir directory that will contain a summary statistics table per
+#'   patient, one integrating all the results, and a posterior probability
+#'   summary. NULL to disable these outputs.
+#' @param out_tree_dir directory that will contain a summary tree per patient.
+#'   NULL to disable writing the summary tree (it will still be calculated
+#'   unless summarize_trees = FALSE).
+#' @param out_trace_dir directory that will contain the resampled trace (.trees
+#'   and .log files) marginalized over S. NULL to disable trace storage.
+#' @param mle_method sorted list of preferred methods to use the estimated
+#'   marginal likelihood for model selection. Choose between PS (Path Sampling),
+#'   SS (Stepping Stone), and HME (Harmonic Mean Estimator). Only useful when
+#'   mle_file is provided.
+#' @param pp_table posterior probability table calculated using
+#'   [calculate_model_averaging_posteriors] or related function. Usually, for
+#'   internal usage.
+#' @inheritParams calculate_model_averaging_posteriors_file
+#' @inheritParams model_average_traces
+#' @inheritParams resample_posterior
+#' @inheritParams mcmc_qc_condition
+#' @param summarize_trees boolean indicating if trees must be summarized (e.g.,
+#'   calculating the MCC tree) or not.
+#' @param tree_branch_sum_fun summarization function for summary tree branches
+#'   (choose from mean, median, keep, and ca). See [get_summary_tree]
+#' @param summary_tree_suffix suffix to the patient ID to be used as filename
+#'   when storing a summary tree
+#' @param summary_params_suffix suffix to the patient ID to be used as filename
+#'   when storing a summary of continuous parameters
+#' @param all_summary_params_suffix suffix to the outdir to be used as filename
+#'   when storing a summary of all continuous parameters across patients
+#' @param all_pp_suffix suffix to the outdir to be used as filename when storing
+#'   a summary of the posterior probabilities of S
+#' @param n_cores number of cores to use for coarse-grained parallelism (per S
+#'   value per patient)
+#' @param precision maximum difference between two floating point numbers to be
+#'   considered equal (used to check posterior probabilities)
+#' @inheritDotParams get_summary_tree_from_trees treeannotator_args
+#' @inheritDotParams get_summary_tree treeannotator_args
+#'
+#' @returns List with ptable: data.table with continuous parameter summary,
+#'   pptable: data.table with posterior probabilities, trees: multiPhylo with
+#'   all the summary trees.
+#' @export
+
+model_average_patient <- function(trees_files,
+                                  log_files = NULL,
+                                  out_dir,
+                                  out_tree_dir,
+                                  out_trace_dir,
+                                  mle_file = NULL,
+                                  pp_table = NULL,
+                                  mle_method = c("PS","SS","HME"),
+                                  log_prior_probabilities = NULL,
+                                  n_marginalized_posterior_samples = 10000,
+                                  max_expected_samples = 1,
+                                  warn_biased_marginalization = TRUE,
+                                  burnin_p = 0.1,
+                                  cred_mass = 0.95,
+                                  summarize_trees = TRUE,
+                                  tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
+                                  n_cells_regex = ".*\\.([0-9]+)cells\\..*",
+                                  basename_regex = "\\.[0-9]+cells\\..*",
+                                  summary_tree_suffix = ".tree",
+                                  summary_params_suffix = ".csv",
+                                  all_summary_params_suffix = "all.csv",
+                                  all_pp_suffix = "pp.csv",
+                                  #n_cells_regex = ".*s([0-9]+).*",
+                                  #basename_regex = "_s[0-9]+.*",
+                                  n_cores = NULL,
+                                  precision = NULL,
+                                  ...){
+
+  #Argument check and logging
+  if(!is.null(out_tree_dir) && summarize_trees == FALSE){
+    warning("Summary tree output directory provided but flag to calculate summary trees was disabled. Re-enabled here.")
+    summarize_trees <- TRUE
+  }
+  if(summarize_trees && .phyfumr_env[['treeannotator']] == FALSE){
+    warning("Summary trees will not be generated since treeannotator is not in your PATH environment variable")
+    out_tree_dir <- NULL
+  }
+  if(!is.null(mle_file) && !is.null(pp_table)){
+    warning("MLE file and pp_table provided, only the pp_table will be used")
+    mle_file <- NULL
+  }
+
+  if(is.null(precision))
+    precision <- .phyfumr_env[['precision']]
+
+  args <- c(as.list(environment()), list(...))
+
+  if(!is.null(n_cores)){
+    if(n_cores == 1){
+      data.table::setDTthreads(1) #For coarser-grained parallelism. This is supposed not to be necessary in later data.table versions, but I am keeping it just in case
+    } else {
+      RNGkind("L'Ecuyer-CMRG") #Different random number generator, so that mclapply is reproducible
+      data.table::setDTthreads(n_cores) #This could be a bad idea since data.table is used within mclapply, but it should be forced to use only 1 thread when forked according to the documentation.
+    }
+  }
+
+  #Input setup
+  trees_files <- trees_files[file.size(trees_files)!=0] #Do not consider empty traces
+  runs_info <- data.table::data.table(trees_files=trees_files,run_names = gsub(pattern = ".trees",
+                                                                               replacement = "",
+                                                                               x = basename(trees_files)))
+  runs_info[,`:=`(patient=gsub(basename_regex,"",run_names))]
+
+  this_patient <- runs_info[,unique(patient)]
+
+  if (length(this_patient)!=1)
+    stop("ERROR: trees files from multiple patients or basename_regex not set properly")
+
+  #Parses phyfum output and merges them if multiple traces per condition had been used
+  print(sprintf("Patient %s...",this_patient))
+  cat("\tParsing data\n")
+  traces <- slapply(
+    lapply(
+      split(runs_info,by="run_names"),
+      '[[',"trees_files"),
+    function(trees_files,burnin_p){
+      load_condition_traces(trees_files = trees_files,burnin_p = burnin_p)
+    },
+    burnin_p = burnin_p, #burnin applied here
+    cl = n_cores)
+  cat("\tDone\n")
+
+  #Performs the model-averaging, using provided MLEs or using HME to calculate them (yes we know HME is evil but in our simulations it works as well as PS or SS for S)
+  cat("\tModel averaging...\n")
+
+  #Needed independently of mle precalculation
+  s_with_data <- sprintf("S_%02d",as.numeric(gsub(n_cells_regex,"\\1",names(traces))))
+
+  #If we have input MLE data, we calculate the posterior probabilities, otherwise, it will be done during re-sampling
+  if (!is.null(mle_file)) {
+    pp_table <- calculate_model_averaging_posteriors_file(mle_file,
+                                                          n_cells_regex = n_cells_regex,
+                                                          basename_regex = basename_regex)
+    pp_table <- pp_table[patient==this_patient,]
+
+    check_write_csv(table = pp_table,
+                    flag = out_dir,
+                    outdir = out_dir,
+                    filename = paste(sep="_",this_patient,all_pp_suffix))
+  }
+
+  if(is.null(pp_table)) { #Calculating MLEs here
+    warning("MLEs estimated here using HME")
+    if(is.null(log_prior_probabilities)) {
+      warning("log prior probabilities for each model were not provided, thus, an improper uniform prior is assumed")
+    }
+    averaged_trace_obj <- model_average_traces(traces,
+                                               log_joint_probabilities = NULL,
+                                               log_prior_probabilities = NULL,
+                                               posterior_probabilities = NULL,
+                                               burnin_p = 0,
+                                               n_marginalized_posterior_samples = n_marginalized_posterior_samples,
+                                               max_expected_samples = max_expected_samples,
+                                               warn_missing_MLE_data = FALSE, #Checked earlier
+                                               warn_biased_marginalization = FALSE) #traces are not sorted so this would not work well
+    pp_table <- data.table::data.table(t(averaged_trace_obj[["pps"]]))
+    data.table::setnames(pp_table,new=s_with_data)
+    pp_table[,`:=`(method="HME",patient=this_patient)]
+
+  } else { #Using precalculated MLEs
+    s_with_MLEs <- sapply(pp_table[patient==this_patient,.SD,.SDcols=grep("S",colnames(pp_table),value = TRUE)],function(x)!is.na(x))
+    s_with_MLEs <- names(s_with_MLEs[s_with_MLEs])
+    valid_traces <- s_with_data %in% s_with_MLEs
+
+    if(length(s_with_MLEs) != length(s_with_data)){
+      if(sum(valid_traces) < length(s_with_MLEs)){#Missing data for existing MLEs
+        stop("ERROR: Missing trace data for existing MLEs")
+      } else {
+        warning("Existing data missing MLEs in provided MLE file. MLE file may be outdated or you are intentionally filtering results")
+      }
+    }
+
+    posterior_probabilities <- as.numeric(pp_table[patient==this_patient,.SD,.SDcols=s_with_data[valid_traces]])
+    if(abs(sum(posterior_probabilities,na.rm = TRUE) - 1) > precision)
+      stop("ERROR: Posterior probabilities of S do not add up to 1. Most probably, there are missing Phyfum traces for S values contained in the MLE file")
+    averaged_trace_obj <- model_average_traces(traces[valid_traces],
+                                               posterior_probabilities = posterior_probabilities,
+                                               burnin_p = 0,
+                                               warn_biased_marginalization = FALSE) #Warnings already generated in check_model_averaging_posteriors if desired
+  }
+  averaged_trace <- averaged_trace_obj[["trace"]]
+
+  #Making it easy with the memory (I assume the GC would do it but this is obvious and takes a lot of memory)
+  rm(traces)
+  rm(averaged_trace_obj)
+
+  #Check pps
+  if(warn_biased_marginalization){
+    invisible(check_model_averaging_posteriors(pp_table,
+                                               n_posterior_samples = n_marginalized_posterior_samples,
+                                               max_expected_samples = max_expected_samples))
+  }
+
+  #Prepare for outputs
+  for (this_dir in c(out_dir, out_trace_dir, out_tree_dir)){
+    if(!is.null(this_dir))
+      dir.create(this_dir,showWarnings = FALSE,recursive = TRUE)
+  }
+
+  #Write the averaged trace
+  if(!is.null(out_trace_dir)) {
+
+    out_trees_file <- paste(sep="/",out_trace_dir,paste0(this_patient,".trees"))
+    out_log_file <- gsub(".trees$",".log$",out_trees_file)
+
+    #Trees
+    ape::write.nexus(averaged_trace$trees, file = out_trees_file)
+
+    #Continuous params
+    writeLines(c("# Marginalizing over S after Phyfum",paste0("# ",lubridate::now()),paste0(collapse=",",c("# arguments:",args))),out_log_file)
+    suppressWarnings(utils::write.table(averaged_trace$ptable, file = out_log_file,quote = FALSE,row.names = FALSE,sep = "\t",append = TRUE))
+  }
+
+  #Summarize continuous parameters
+  #Selecting params to analyze
+  params <- names(averaged_trace$ptable)
+  params <- params[!params %in% .phyfumr_env[["not_params"]]]
+  params <- params[!params %in% detect_constants(averaged_trace$ptable,params)]
+
+  #Calculating summary stats
+  infun <- function(param,thedata,cred_mass){
+    thisHDI <- HDInterval::hdi(thedata[,get(param)],credMass = cred_mass)
+    data.table::data.table("param" = param,
+                           "medianP"= stats::median(thedata[,get(param)]),
+                           "meanP"= mean(thedata[,get(param)]),
+                           "HDILower" = thisHDI[1],
+                           "HDIUpper" = thisHDI[2])
+  }
+
+  param_table <- data.table::rbindlist(lapply(params,infun,thedata = averaged_trace$ptable,cred_mass = cred_mass))
+
+  #Output (if needed)
+  check_write_csv(table = param_table,
+                  flag = out_dir,
+                  outdir = out_dir,
+                  filename = paste0(this_patient,"",summary_params_suffix))
+
+  #Summarize the trees
+  if(summarize_trees) {
+    if(!is.null(out_tree_dir)){ #Whether we want to save the summary tree or not
+      tree_outname <- paste(sep="/",out_tree_dir,paste0(this_patient,summary_tree_suffix))
+    } else {
+      tree_outname <- NULL
+    }
+    if(!is.null(out_trace_dir)){ #The trees file was written earlier so we just re-use it here
+      summary_tree = get_summary_tree(trees_file = out_trees_file,
+                                      burnin_trees = 0,
+                                      outname = tree_outname,
+                                      sum_fun = tree_branch_sum_fun,
+                                      ...)
+    } else { #Without storing the trees file
+      summary_tree = get_summary_tree_from_trees(trees = averaged_trace$trees,
+                                                 burnin_trees = 0,
+                                                 outname = tree_outname,
+                                                 sum_fun = tree_branch_sum_fun,
+                                                 ...)
+    }
+  }
+
+  cat("\tDone\nDone\n")
+  return(list(ptable = param_table,
+              pptable = pp_table,
+              trees = summary_tree))
+}
+
 #' Marginalize posteriors over S across the whole experiment
 #'
 #' This function uses Bayesian Model Averaging to marginalize over S. It can
@@ -507,16 +786,9 @@ model_average <- function(file_dir,
                           all_pp_suffix = "pp.csv",
                           #n_cells_regex = ".*s([0-9]+).*",
                           #basename_regex = "_s[0-9]+.*",
-                          n_cores = 1,
+                          n_cores = NULL,
                           precision = NULL,
                           ...){
-  #Argument check and logging
-  if(is.null(precision))
-    precision <- .phyfumr_env[['precision']]
-
-  args <- c(as.list(environment()), list(...))
-
-  #If we have input mle data, we calculate the posterior probabilities, otherwise, it will be done during re-sampling
 
   if (!is.null(mle_file)) {
     pp_table <- calculate_model_averaging_posteriors_file(mle_file,
@@ -534,22 +806,6 @@ model_average <- function(file_dir,
     pp_table <- NULL
   }
 
-  #Prepare for outputs
-  for (this_dir in c(out_dir, out_trace_dir, out_tree_dir)){
-    if(!is.null(this_dir))
-      dir.create(this_dir,showWarnings = FALSE,recursive = TRUE)
-  }
-
-  #Warn if some of the desired outputs can't be generated
-  if(!is.null(out_tree_dir) && summarize_trees == FALSE){
-    warning("Summary tree output directory provided but flag to calculate summary trees was disabled. Re-enabled here.")
-    summarize_trees <- TRUE
-  }
-  if(summarize_trees && .phyfumr_env[['treeannotator']] == FALSE){
-    warning("Summary trees will not be generated since treeannotator is not in your PATH environment variable")
-    out_tree_dir <- NULL
-  }
-
   #Getting dataset information
   trees_files <- list.files(path = file_dir, pattern = "*.trees$",
                             full.names = TRUE,
@@ -564,133 +820,32 @@ model_average <- function(file_dir,
   runs_info[,`:=`(patient=gsub(basename_regex,"",run_names))]
 
   # Main patient loop, returning a list with a stats data.table and summary tree per patient
-  result_list <- lapply(runs_info[,unique(patient)],function(this_patient){
-    #Parses phyfum output and merges them if multiple traces per condition had been used
-    print(sprintf("Patient %s...",this_patient))
-    cat("\tParsing data\n")
-    this_patient_traces <- slapply(
-      lapply(
-        split(runs_info[patient==this_patient,],by="run_names"),
-        '[[',"trees_files"),
-      function(trees_files,burnin_p){
-        load_condition_traces(trees_files = trees_files,burnin_p = burnin_p)
-      },
-      burnin_p = burnin_p, #burnin applied here
-      cl = n_cores)
-    cat("\tDone\n")
-
-    #Performs the model-averaging, using provided MLEs or using HME to calculate them (yes we know HME is evil but in our simulations it works as well as PS or SS for S)
-    cat("\tModel averaging...\n")
-
-    #Needed independently of mle precalculation
-    these_s_with_data <- sprintf("S_%02d",as.numeric(gsub(n_cells_regex,"\\1",names(this_patient_traces))))
-    this_pp_table <- NULL
-
-    if(is.null(mle_file)) { #Calculating MLEs here
-      this_averaged_trace_obj <- model_average_traces(this_patient_traces,
-                                                  log_joint_probabilities = NULL,
-                                                  log_prior_probabilities = NULL,
-                                                  posterior_probabilities = NULL,
-                                                  burnin_p = 0,
-                                                  n_marginalized_posterior_samples = n_marginalized_posterior_samples,
-                                                  max_expected_samples = max_expected_samples,
-                                                  warn_missing_MLE_data = FALSE, #Checked earlier
-                                                  warn_biased_marginalization = FALSE) #this_patient_traces are not sorted so this would not work well
-      this_pp_table <- data.table::data.table(t(this_averaged_trace_obj[["pps"]]))
-      data.table::setnames(this_pp_table,new=these_s_with_data)
-      this_pp_table[,`:=`(method="HME",patient=this_patient)]
-
-    } else { #Using precalculated MLEs
-      these_s_with_MLEs <- sapply(pp_table[patient==this_patient,.SD,.SDcols=grep("S",colnames(pp_table),value = TRUE)],function(x)!is.na(x))
-      these_s_with_MLEs <- names(these_s_with_MLEs[these_s_with_MLEs])
-      valid_traces <- these_s_with_data %in% these_s_with_MLEs
-
-      if(length(these_s_with_MLEs) != length(these_s_with_data)){
-        if(sum(valid_traces) < length(these_s_with_MLEs)){#Missing data for existing MLEs
-          stop("ERROR: Missing trace data for existing MLEs")
-        } else {
-          warning("Existing data missing MLEs in provided MLE file. MLE file may be outdated or you are intentionally filtering results")
-        }
-      }
-
-      these_posterior_probabilities <- as.numeric(pp_table[patient==this_patient,.SD,.SDcols=these_s_with_data[valid_traces]])
-      if(abs(sum(these_posterior_probabilities,na.rm = TRUE) - 1) > precision)
-        stop("ERROR: Posterior probabilities of S do not add up to 1. Most probably, there are missing Phyfum traces for S values contained in the MLE file")
-      this_averaged_trace_obj <- model_average_traces(this_patient_traces[valid_traces],
-                                                  posterior_probabilities = these_posterior_probabilities,
-                                                  burnin_p = 0,
-                                                  warn_biased_marginalization = FALSE) #Warnings already generated in check_model_averaging_posteriors if desired
-    }
-
-    this_averaged_trace <- this_averaged_trace_obj[["trace"]]
-
-    rm(this_patient_traces) #Making it easy with the memory (I assume the GC would do it but this is obvious and takes a lot of memory)
-
-    #Write the averaged trace
-    if(!is.null(out_trace_dir)) {
-
-      this_out_trees_file <- paste(sep="/",out_trace_dir,paste0(this_patient,".trees"))
-      this_out_log_file <- gsub(".trees$",".log$",this_out_trees_file)
-
-      #Trees
-      ape::write.nexus(this_averaged_trace$trees, file = this_out_trees_file)
-
-      #Continuous params
-      writeLines(c("# Marginalizing over S after Phyfum",paste0("# ",lubridate::now()),paste0(collapse=",",c("# arguments:",args))),this_out_log_file)
-      suppressWarnings(utils::write.table(this_averaged_trace$ptable, file = this_out_log_file,quote = FALSE,row.names = FALSE,sep = "\t",append = TRUE))
-    }
-
-    #Summarize continuous parameters
-    #Selecting params to analyze
-    params <- names(this_averaged_trace$ptable)
-    params <- params[!params %in% .phyfumr_env[["not_params"]]]
-    params <- params[!params %in% detect_constants(this_averaged_trace$ptable,params)]
-
-    #Calculating summary stats
-    infun <- function(param,thedata,cred_mass){
-      thisHDI <- HDInterval::hdi(thedata[,get(param)],credMass = cred_mass)
-      data.table::data.table("param" = param,
-                             "medianP"= stats::median(thedata[,get(param)]),
-                             "meanP"= mean(thedata[,get(param)]),
-                             "HDILower" = thisHDI[1],
-                             "HDIUpper" = thisHDI[2])
-    }
-
-    this_param_table <- data.table::rbindlist(lapply(params,infun,thedata = this_averaged_trace$ptable,cred_mass = cred_mass))
-
-    #Output (if needed)
-    check_write_csv(table = this_param_table,
-                    flag = out_dir,
-                    outdir = out_dir,
-                    filename = paste0(this_patient,"",summary_params_suffix))
-
-    #Summarize the trees
-    if(summarize_trees) {
-      if(!is.null(out_tree_dir)){ #Whether we want to save the summary tree or not
-        this_tree_outname <- paste(sep="/",out_tree_dir,paste0(this_patient,summary_tree_suffix))
-      } else {
-        this_tree_outname <- NULL
-      }
-      if(!is.null(out_trace_dir)){ #The trees file was written earlier so we just re-use it here
-        this_summary_tree = get_summary_tree(trees_file = this_out_trees_file,
-                                         burnin_trees = 0,
-                                         outname = this_tree_outname,
-                                         sum_fun = tree_branch_sum_fun,
-                                         ...)
-      } else { #Without storing the trees file
-        this_summary_tree = get_summary_tree_from_trees(trees = this_averaged_trace$trees,
-                                         burnin_trees = 0,
-                                         outname = this_tree_outname,
-                                         sum_fun = tree_branch_sum_fun,
-                                         ...)
-      }
-    }
-
-    cat("\tDone\nDone\n")
-    return(list(ptable = this_param_table,
-                pptable = this_pp_table,
-                trees = this_summary_tree))
-  })
+  result_list <- lapply(runs_info[,unique(patient)],
+                        function(this_patient){
+                          model_average_patient(trees_files = runs_info[patient==this_patient,trees_files],
+                                                out_dir = out_dir,
+                                                out_tree_dir = out_tree_dir,
+                                                out_trace_dir = out_trace_dir,
+                                                mle_file = NULL, #We are using the pp_table calculated above instead
+                                                mle_method = mle_method,
+                                                pp_table = pp_table,
+                                                log_prior_probabilities = log_prior_probabilities,
+                                                n_marginalized_posterior_samples = n_marginalized_posterior_samples,
+                                                max_expected_samples = max_expected_samples,
+                                                warn_biased_marginalization = FALSE, #Done here if necessary
+                                                burnin_p = burnin_p,
+                                                cred_mass = cred_mass,
+                                                summarize_trees = summarize_trees,
+                                                tree_branch_sum_fun = tree_branch_sum_fun,
+                                                n_cells_regex = n_cells_regex,
+                                                basename_regex = basename_regex,
+                                                summary_tree_suffix = summary_tree_suffix,
+                                                summary_params_suffix = summary_params_suffix,
+                                                all_summary_params_suffix = all_summary_params_suffix,
+                                                all_pp_suffix = all_pp_suffix,
+                                                n_cores = n_cores,
+                                                precision = precision,
+                                                ...)})
 
   #Re-organizing data for return and writting
   names(result_list) <- runs_info[,unique(patient)]
@@ -706,12 +861,14 @@ model_average <- function(file_dir,
                   filename = all_summary_params_suffix)
 
   #Checking posterior probabilities
-  invisible(check_model_averaging_posteriors(pp_table,
-                                             n_posterior_samples = n_marginalized_posterior_samples,
-                                             max_expected_samples = max_expected_samples,
-                                             warn_biased_marginalization=T))
+  if(warn_biased_marginalization){
+    invisible(check_model_averaging_posteriors(pp_table,
+                                               n_posterior_samples = n_marginalized_posterior_samples,
+                                               max_expected_samples = max_expected_samples))
+  }
 
   return(list(ptable = merged_table,
               pptable = pp_table,
               trees = all_summary_trees))
 }
+

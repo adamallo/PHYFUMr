@@ -27,4 +27,17 @@ all_results <- model_average(file_dir = paste(sep="/",baseDir,runsFolder),
                              n_cores = 2,
                              treeannotator_args = c("-type","mcc"))
 
+trees_files <- list.files(paste(sep="/",baseDir,runsFolder),pattern = "EAN.*.trees$",recursive = T,full.names = T)
+
+
+single_result <- model_average_patient(trees_files = trees_files,
+                               out_dir = out_dir,
+                               out_trace_dir = NULL,
+                               out_tree_dir = out_tree_dir,
+                               mle_file = "~/projects/flipFlop/latestG22/tissueUnspecificSelection/nf/analyses/MLE.csv",
+                               n_cells_regex = ".*s([0-9]+).*",
+                               basename_regex = "_s[0-9]+.*",
+                               n_cores = 2,
+                               treeannotator_args = c("-type","mcc"))
+
 #system(paste("ratarmount -u",mountDir))

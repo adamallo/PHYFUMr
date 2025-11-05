@@ -629,11 +629,13 @@ mcmc_qc_condition <- function(trees_files,
                             ){
 
   #arg checking and configuration based on it
-  if(!is.null(n_cores) && n_cores == 1){
-    data.table::setDTthreads(1) #Everything should be single thread to use coarse-grained parallelism
-  } else {
-    RNGkind("L'Ecuyer-CMRG") #Different random number generator, so that mclapply is reproducible
-    data.table::setDTthreads(n_cores)
+  if(!is.null(n_cores)){
+    if(n_cores == 1){
+      data.table::setDTthreads(1) #For coarser-grained parallelism. This is supposed not to be necessary in later data.table versions, but I am keeping it just in case
+    } else {
+      RNGkind("L'Ecuyer-CMRG") #Different random number generator, so that mclapply is reproducible
+      data.table::setDTthreads(n_cores) #Not used at the same time as mclapply
+    }
   }
 
   treedist <- match.arg(treedist)
