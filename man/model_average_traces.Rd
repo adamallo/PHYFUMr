@@ -12,7 +12,8 @@ model_average_traces(
   burnin_p = 0,
   n_marginalized_posterior_samples = 10000,
   max_expected_samples = 1,
-  warn_biased_marginalization = T
+  warn_missing_MLE_data = TRUE,
+  warn_biased_marginalization = TRUE
 )
 }
 \arguments{
@@ -37,12 +38,15 @@ without.}
 \item{max_expected_samples}{maximum allowed expected number of samples in an
 extreme value of S}
 
+\item{warn_missing_MLE_data}{Logical, indicating whether to warn or not
+if the MLEs will be estimated here using HME}
+
 \item{warn_biased_marginalization}{Logical, indicating whether to warn or not
-if the limit of
-max_expected_samples in an extreme value of S is violated}
+if the limit of max_expected_samples in an extreme value of S is violated.
+To use this, traces and probabilities must be sorted by S value}
 }
 \value{
-model-averaged chain
+a list of the model-averaged trace and the posterior probabilities
 }
 \description{
 Perform model-averaging across PHYFUMr traces from different models
@@ -53,3 +57,4 @@ is estimated here using the harmonic mean estimator. If the prior
 probabilities for each model are provided, they are used to calculate the
 final joint probabilities, otherwise, a uniform prior is implicitly used.
 }
+\keyword{internal}

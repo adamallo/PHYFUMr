@@ -8,22 +8,21 @@ check_model_averaging_posteriors(
   pp_table,
   n_posterior_samples = 10000,
   max_expected_samples = 1,
-  warn_biased_marginalization = T
+  warn_biased_marginalization = TRUE
 )
 }
 \arguments{
 \item{pp_table}{table with posterior probabilities of S as given by
 \link{calculate_model_averaging_posteriors_file}}
 
-\item{n_posterior_samples}{number of desired posterior samples to calculate the number
-of expected samples per S}
+\item{n_posterior_samples}{number of desired posterior samples to calculate
+the number of expected samples per S}
 
 \item{max_expected_samples}{maximum allowed expected number of samples in an
 extreme value of S}
 
 \item{warn_biased_marginalization}{Logical, indicating whether to warn or not
-if the limit of
-max_expected_samples in an extreme value of S is violated}
+if the limit of max_expected_samples in an extreme value of S is violated}
 }
 \value{
 table with information on patients with insufficient S sampling

@@ -7,10 +7,10 @@
 load_condition_traces(trees_files, log_files = NULL, burnin_p = 0.1)
 }
 \arguments{
-\item{trees_files}{list of PHYFUM's output .trees files (one per independent
+\item{trees_files}{array of PHYFUM's output .trees files (one per independent
 run)}
 
-\item{log_files}{list of PHYFUM's output .log files (one per independent
+\item{log_files}{array of PHYFUM's output .log files (one per independent
 run). If not used, this function will assume they have the same name and
 location as their .trees counterparts}
 

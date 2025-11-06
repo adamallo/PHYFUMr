@@ -442,8 +442,8 @@ get_summary_tree_from_trees <- function(trees,
 #'
 #' @inheritParams load_condition_traces
 #' @param out_dir directory that will contain a summary statistics table per
-#'   patient, one integrating all the results, and a posterior probability
-#'   summary. NULL to disable these outputs.
+#'   patient, and a posterior probability summary. NULL to disable these
+#'   outputs.
 #' @param out_tree_dir directory that will contain a summary tree per patient.
 #'   NULL to disable writing the summary tree (it will still be calculated
 #'   unless summarize_trees = FALSE).
@@ -468,10 +468,10 @@ get_summary_tree_from_trees <- function(trees,
 #'   when storing a summary tree
 #' @param summary_params_suffix suffix to the patient ID to be used as filename
 #'   when storing a summary of continuous parameters
-#' @param all_summary_params_suffix suffix to the outdir to be used as filename
-#'   when storing a summary of all continuous parameters across patients
-#' @param all_pp_suffix suffix to the outdir to be used as filename when storing
-#'   a summary of the posterior probabilities of S
+#' @param pp_suffix suffix to the patient ID to be used as filename when storing
+#'   the posterior probabilities of S. Not written if NULL.
+#' @param patient_id_separator separator to merge the patient ID with the
+#'   suffixes above
 #' @param n_cores number of cores to use for coarse-grained parallelism (per S
 #'   value per patient)
 #' @param precision maximum difference between two floating point numbers to be
@@ -502,10 +502,10 @@ model_average_patient <- function(trees_files,
                                   tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
                                   n_cells_regex = ".*\\.([0-9]+)cells\\..*",
                                   basename_regex = "\\.[0-9]+cells\\..*",
-                                  summary_tree_suffix = ".tree",
-                                  summary_params_suffix = ".csv",
-                                  all_summary_params_suffix = "all.csv",
-                                  all_pp_suffix = "pp.csv",
+                                  summary_tree_suffix = "summary.tree",
+                                  summary_params_suffix = "summary.csv",
+                                  pp_suffix = "pp.csv",
+                                  patient_id_separator = "_",
                                   #n_cells_regex = ".*s([0-9]+).*",
                                   #basename_regex = "_s[0-9]+.*",
                                   n_cores = NULL,
@@ -578,11 +578,6 @@ model_average_patient <- function(trees_files,
                                                           n_cells_regex = n_cells_regex,
                                                           basename_regex = basename_regex)
     pp_table <- pp_table[patient==this_patient,]
-
-    check_write_csv(table = pp_table,
-                    flag = out_dir,
-                    outdir = out_dir,
-                    filename = paste(sep="_",this_patient,all_pp_suffix))
   }
 
   if(is.null(pp_table)) { #Calculating MLEs here
@@ -630,12 +625,18 @@ model_average_patient <- function(trees_files,
   rm(traces)
   rm(averaged_trace_obj)
 
-  #Check pps
+  #Check pps and write them if desired
   if(warn_biased_marginalization){
     invisible(check_model_averaging_posteriors(pp_table,
                                                n_posterior_samples = n_marginalized_posterior_samples,
                                                max_expected_samples = max_expected_samples))
   }
+
+  check_write_csv(table = pp_table,
+                  flag = ifelse(is.null(pp_suffix) || is.null(out_dir),NULL,TRUE),
+                  outdir = out_dir,
+                  filename = paste(sep=patient_id_separator,this_patient,pp_suffix))
+
 
   #Prepare for outputs
   for (this_dir in c(out_dir, out_trace_dir, out_tree_dir)){
@@ -679,12 +680,12 @@ model_average_patient <- function(trees_files,
   check_write_csv(table = param_table,
                   flag = out_dir,
                   outdir = out_dir,
-                  filename = paste0(this_patient,"",summary_params_suffix))
+                  filename = paste(sep=patient_id_separator,this_patient,summary_params_suffix))
 
   #Summarize the trees
   if(summarize_trees) {
     if(!is.null(out_tree_dir)){ #Whether we want to save the summary tree or not
-      tree_outname <- paste(sep="/",out_tree_dir,paste0(this_patient,summary_tree_suffix))
+      tree_outname <- paste(sep="/",out_tree_dir,paste(sep=patient_id_separator,this_patient,summary_tree_suffix))
     } else {
       tree_outname <- NULL
     }
@@ -724,38 +725,14 @@ model_average_patient <- function(trees_files,
 #'
 #' @param file_dir directory that contains .trees and .log files (with or
 #'   without subdirectories).
-#' @param out_dir directory that will contain a summary statistics table per
-#'   patient, one integrating all the results, and a posterior probability
-#'   summary. NULL to disable these outputs.
-#' @param out_tree_dir directory that will contain a summary tree per patient.
-#'   NULL to disable writing the summary tree (it will still be calculated
-#'   unless summarize_trees = FALSE).
-#' @param out_trace_dir directory that will contain the resampled trace (.trees
-#'   and .log files) marginalized over S. NULL to disable trace storage.
-#' @param mle_method sorted list of preferred methods to use the estimated
-#'   marginal likelihood for model selection. Choose between PS (Path Sampling),
-#'   SS (Stepping Stone), and HME (Harmonic Mean Estimator). Only useful when
-#'   mle_file is provided.
-#' @inheritParams calculate_model_averaging_posteriors_file
-#' @inheritParams model_average_traces
-#' @inheritParams resample_posterior
-#' @inheritParams mcmc_qc_condition
-#' @param summarize_trees boolean indicating if trees must be summarized (e.g.,
-#'   calculating the MCC tree) or not.
-#' @param tree_branch_sum_fun summarization function for summary tree branches
-#'   (choose from mean, median, keep, and ca). See [get_summary_tree]
-#' @param summary_tree_suffix suffix to the patient ID to be used as filename
-#'   when storing a summary tree
-#' @param summary_params_suffix suffix to the patient ID to be used as filename
-#'   when storing a summary of continuous parameters
-#' @param all_summary_params_suffix suffix to the outdir to be used as filename
-#'   when storing a summary of all continuous parameters across patients
-#' @param all_pp_suffix suffix to the outdir to be used as filename when storing
-#'   a summary of the posterior probabilities of S
-#' @param n_cores number of cores to use for coarse-grained parallelism (per S
-#'   value per patient)
-#' @param precision maximum difference between two floating point numbers to be
-#'   considered equal (used to check posterior probabilities)
+#' @param out_dir directory that will contain a summary statistics table
+#'   integrating all the results, and a posterior probability summary. NULL to
+#'   disable these outputs.
+#' @inheritParams model_average_patient
+#' @param all_summary_params_filename filename for the summary of all continuous
+#'   parameters across patients (within out_dir)
+#' @param pp_filename filename for the summary of the posterior probabilities of
+#'   S (within out_dir)
 #' @inheritDotParams get_summary_tree_from_trees treeannotator_args
 #' @inheritDotParams get_summary_tree treeannotator_args
 #'
@@ -780,10 +757,12 @@ model_average <- function(file_dir,
                           tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
                           n_cells_regex = ".*\\.([0-9]+)cells\\..*",
                           basename_regex = "\\.[0-9]+cells\\..*",
-                          summary_tree_suffix = ".tree",
-                          summary_params_suffix = ".csv",
-                          all_summary_params_suffix = "all.csv",
-                          all_pp_suffix = "pp.csv",
+                          summary_tree_suffix = "summary.tree",
+                          summary_params_suffix = "summary.csv",
+                          pp_suffix = "pp.csv",
+                          patient_id_separator = "_",
+                          all_summary_params_filename = "summary.csv",
+                          pp_filename = "pp.csv",
                           #n_cells_regex = ".*s([0-9]+).*",
                           #basename_regex = "_s[0-9]+.*",
                           n_cores = NULL,
@@ -797,7 +776,7 @@ model_average <- function(file_dir,
     check_write_csv(table = pp_table,
                     flag = out_dir,
                     outdir = out_dir,
-                    filename = all_pp_suffix)
+                    filename = pp_filename)
   } else {
     warning("MLEs estimated here using HME")
     if(is.null(log_prior_probabilities)) {
@@ -841,8 +820,8 @@ model_average <- function(file_dir,
                                                 basename_regex = basename_regex,
                                                 summary_tree_suffix = summary_tree_suffix,
                                                 summary_params_suffix = summary_params_suffix,
-                                                all_summary_params_suffix = all_summary_params_suffix,
-                                                all_pp_suffix = all_pp_suffix,
+                                                pp_suffix = pp_suffix,
+                                                patient_id_separator = patient_id_separator,
                                                 n_cores = n_cores,
                                                 precision = precision,
                                                 ...)})
@@ -856,9 +835,9 @@ model_average <- function(file_dir,
   class(all_summary_trees) <- "multiPhylo"
 
   check_write_csv(table = merged_table,
-                  flag = all_summary_params_suffix,
+                  flag = all_summary_params_filename,
                   outdir = out_dir,
-                  filename = all_summary_params_suffix)
+                  filename = all_summary_params_filename)
 
   #Checking posterior probabilities
   if(warn_biased_marginalization){
@@ -870,5 +849,88 @@ model_average <- function(file_dir,
   return(list(ptable = merged_table,
               pptable = pp_table,
               trees = all_summary_trees))
+}
+
+#' Gather an summarize the marginalization of posteriors over S
+#'
+#' Run after [model_average_patient] for all patients, generates the same
+#' experiment-wide outputs as [model_average].
+#'
+#' @inheritParams model_average_patient
+#' @param all_summary_params_filename filename for the summary of all continuous
+#'   parameters across patients (within out_dir)
+#' @param pp_filename filename for the summary of the posterior probabilities of
+#'   S (within out_dir)
+#'
+#' @returns List with ptable: data.table with continuous parameter summary,
+#'   pptable: data.table with posterior probabilities, trees: multiPhylo with
+#'   all the summary trees.
+#' @export
+
+model_average_gather <- function(out_dir,
+                                 n_cells_regex = ".*\\.([0-9]+)cells\\..*",
+                                 basename_regex = "\\.[0-9]+cells\\..*",
+                                 summary_tree_suffix = "summary.tree",
+                                 summary_params_suffix = "summary.csv",
+                                 pp_suffix = "pp.csv",
+                                 patient_id_separator = "_",
+                                 all_summary_params_filename = "summary.csv",
+                                 pp_filename = "pp.csv"
+                                 ) {
+
+  #Get PP table. It will use the full one if available, or otherwise merge the
+  #patient ones
+  all_pp_file <- list.files(path = out_dir,
+                            pattern = paste0("^",pp_filename,"$"),
+                            recursive = TRUE,
+                            full.names = TRUE)
+
+  if(length(all_pp_file)==1){
+    pp_table <- data.table::fread(all_pp_file)
+  } else {
+    pp_files <- list.files(path = out_dir,
+                           pattern = paste0(patient_id_separator,pp_suffix,"$"),
+                           recursive = TRUE,
+                           full.names = TRUE)
+    pp_files <- pp_files[!grepl(paste0("^",pp_filename,"$"),basename(pp_files))] #just in case the user-specified pp_filename is compatible with the patient_id_separator + pp_suffix
+    pp_table <- data.table::rbindlist(lapply(pp_files,data.table::fread),fill = TRUE)
+  }
+
+  #Get summary table
+  all_summary_table_files <- list.files(path = out_dir,
+                                   pattern = paste0(patient_id_separator,summary_params_suffix,"$"),
+                                   recursive = TRUE,
+                                   full.names = TRUE)
+  all_summary_table_files <- all_summary_table_files[!grepl(paste0("^",all_summary_params_filename,"$"),basename(all_summary_table_files))] #just in case the user-specified all_summary_params_filename is compatible with the patient_id_separator + summary_table_suffix
+  names(all_summary_table_files) <- gsub(paste0(patient_id_separator,summary_params_suffix),"",basename(all_summary_table_files))
+  merged_table <- data.table::rbindlist(lapply(all_summary_table_files,data.table::fread),idcol = "patient")
+
+  #Get all trees
+  all_summary_tree_files <- list.files(path = out_dir,
+                                        pattern = paste0(patient_id_separator,summary_tree_suffix,"$"),
+                                        recursive = TRUE,
+                                        full.names = TRUE)
+  all_summary_trees <- lapply(all_summary_tree_files,ape::read.nexus)
+  names(all_summary_trees) <- gsub(paste0(patient_id_separator,summary_params_suffix),"",basename(all_summary_tree_files))
+  class(all_summary_trees) <- "multiPhylo"
+
+  #Checking numbers
+  if((nrow(pp_table) != nrow(merged_table[,.N,by=patient])) || (nrow(pp_table) != length(all_summary_trees))){
+    stop("The number of cases in the posterior probabilities table, summary table, and trees are not the same")
+  }
+
+  #Output
+  check_write_csv(table = merged_table,
+                  flag = all_summary_params_filename,
+                  outdir = out_dir,
+                  filename = all_summary_params_filename)
+  check_write_csv(table = pp_table,
+                  flag = pp_filename,
+                  outdir = out_dir,
+                  filename = pp_filename)
+
+   return(list(ptable = merged_table,
+               pptable = pp_table,
+               trees = all_summary_trees))
 }
 

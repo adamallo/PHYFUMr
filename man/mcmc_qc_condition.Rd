@@ -27,10 +27,10 @@ mcmc_qc_condition(
 )
 }
 \arguments{
-\item{trees_files}{list of phyfum's output .trees files (one per independent
+\item{trees_files}{array of phyfum's output .trees files (one per independent
 run)}
 
-\item{log_files}{list of phyfum's output .log files (one per independent
+\item{log_files}{array of phyfum's output .log files (one per independent
 run). If not used, this function will assume they have the same name and
 location as their .trees counterparts}
 

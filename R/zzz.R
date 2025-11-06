@@ -93,5 +93,6 @@ utils::globalVariables(c("loadedCSVs",
                          "pp_min_S",
                          "pp_max_S",
                          "expected_samples_max_S",
-                         "expected_samples_min_S"))
+                         "expected_samples_min_S",
+                         "run_names"))
 
