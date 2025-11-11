@@ -4,7 +4,12 @@
 \alias{load_traces}
 \title{Loads multiple PHYFUM MCMC traces}
 \usage{
-load_traces(trees_files, log_files = NULL, burnin_p = 0.1)
+load_traces(
+  trees_files,
+  log_files = NULL,
+  burnin_p = 0.1,
+  add_cenancestor = FALSE
+)
 }
 \arguments{
 \item{trees_files}{array of PHYFUM's output .trees files (one per independent
@@ -15,6 +20,9 @@ run). If not used, this function will assume they have the same name and
 location as their .trees counterparts}
 
 \item{burnin_p}{Proportion of MCMC samples to discard as burnin}
+
+\item{add_cenancestor}{Boolean that indicates if the cenancestor branch
+should be added to the tree traces or not}
 }
 \value{
 list of RWTY's traces

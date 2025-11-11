@@ -1,5 +1,4 @@
 # R/traces.R
-
 # Simplified version of RWTY traces that does not unroot trees
 
 #' Ensures that traces are in the expected format
@@ -64,6 +63,8 @@ fix_nexus_content <- function(nexus_content){
 #' @param logfile A path to a file containing model parameters and likelihoods.
 #'   If no path is provided, it looks for a file with the same name as the tree
 #'   file with .log extension
+#' @param add_cenancestor Boolean that indicates if the cenancestor branch
+#'   should be added to the tree traces or not
 #' @inheritParams remove_burnin_traces
 #'
 #' @return output A phyfumr_trace object containing the multiPhylo and the table
@@ -73,25 +74,11 @@ fix_nexus_content <- function(nexus_content){
 #'
 #' @export
 
-load_trace <- function(treefile,logfile=NULL,burnin_p=0.1){
+load_trace <- function(treefile,logfile=NULL,burnin_p=0.1,add_cenancestor=FALSE){
   if(!file.exists(treefile)) {
     stop("ERROR: Input tree file is not available")
   }
   trace <- list(trees = NULL, ptable = NULL)
-
-  #trees
-  con <- file(treefile, open = "r")
-  trees_content <- suppressWarnings(readLines(con))
-  close(con)
-
-  fixed_trees_content <- fix_nexus_content(trees_content)
-
-  if(length(fixed_trees_content)==1){
-    stop("ERROR: empty trace")
-  }
-
-  trees_con <- textConnection(fixed_trees_content)
-  trace$trees <- ape::read.nexus(trees_con)
 
   #ptable
   if(is.null(logfile)){
@@ -100,15 +87,49 @@ load_trace <- function(treefile,logfile=NULL,burnin_p=0.1){
       warning(sprintf("log file for %s not found. Parameter will not be loaded",treefile))
       logfile <- NULL
     }
+    if(add_cenancestor){
+      stop("ERROR: cenancestor branch cannot be added without a parameter table")
+    }
   }
   if(!is.null(logfile)) {
     trace$ptable <- data.table::fread(logfile)
-    if (length(trace$trees) != nrow(trace$ptable))
-      stop("ERROR: .trees and .log files are not of the same length!")
+  }
+  #Trees
+  #Read NEXUS content
+  con <- file(treefile, open = "r")
+  trees_content <- suppressWarnings(readLines(con))
+  close(con)
+
+  fixed_trees_content <- fix_nexus_content(trees_content)
+  if(length(fixed_trees_content)==1){
+    warning(paste0("Empty trace:",treefile,". Skipping it"))
+    return(NULL)
   }
 
+  #Tree parse and modification
+  if(add_cenancestor){
+    if(!"luca_branch" %in% colnames(trace$ptable)){
+      stop("ERROR: cenancestor can't be added to the .trees files since luca_branch is not present in the log file")
+    }
+    modified_trees_content <- add_cenancestor_nexus_content(fixed_trees_content,
+                                                         trace$ptable)
+    trees_con <- textConnection(modified_trees_content)
+
+  } else {
+    trees_con <- textConnection(fixed_trees_content)
+  }
+
+  trace$trees <- ape::read.nexus(trees_con)
+  close(trees_con)
+
+  #Finalizing trace object
+  if (nrow(trace$ptable) != length(trace$trees)){
+      stop("ERROR: .trees and .log files are not of the same length!")
+  }
   class(trace) <- "phyfumr_trace"
 
+
+  #Burnin and return
   if(!is.null(burnin_p) && burnin_p > 0){
     return(remove_burnin_traces(trace,burnin_p)[[1]])
   } else {
@@ -128,7 +149,7 @@ load_trace <- function(treefile,logfile=NULL,burnin_p=0.1){
 #' @returns list of RWTY's traces
 #' @keywords internal
 
-load_traces <- function(trees_files, log_files=NULL, burnin_p=0.1){
+load_traces <- function(trees_files, log_files=NULL, burnin_p=0.1, add_cenancestor=FALSE){
   if(!all(file.exists(trees_files))) {
     stop("ERROR: Not all input tree files exist. Problem files: ",paste(trees_files[!file.exists(trees_files)],collapse=", "))
   }
@@ -143,7 +164,10 @@ load_traces <- function(trees_files, log_files=NULL, burnin_p=0.1){
   }
 
   traces <- lapply(seq_along(trees_files),FUN=function(i_file){
-    load_trace(trees_files[i_file],log_files[i_file],burnin_p)
+    load_trace(treefile = trees_files[i_file],
+               logfile = log_files[i_file],
+               burnin_p = burnin_p,
+               add_cenancestor = add_cenancestor)
   })
 
   return(traces)
@@ -184,8 +208,11 @@ merge_traces <- function(traces,burnin_p=0){
 #' @returns list of traces (list of trees and ptable)
 #' @keywords internal
 
-load_condition_traces <- function(trees_files, log_files=NULL, burnin_p = 0.1) {
-  traces <- load_traces(trees_files, log_files, burnin_p)
+load_condition_traces <- function(trees_files, log_files=NULL, burnin_p = 0.1, add_cenancestor=FALSE) {
+  traces <- load_traces(trees_files = trees_files,
+                        log_files = log_files,
+                        burnin_p = burnin_p,
+                        add_cenancestor = add_cenancestor)
   if(length(traces)!=1 && !methods::is(traces,"phyfumr_trace")) {
     return(merge_traces(traces,burnin_p = 0)) #Burnin already happened at load_traces
   }

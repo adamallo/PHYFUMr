@@ -500,6 +500,7 @@ model_average_patient <- function(trees_files,
                                   cred_mass = 0.95,
                                   summarize_trees = TRUE,
                                   tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
+                                  add_cenancestor = FALSE,
                                   n_cells_regex = ".*\\.([0-9]+)cells\\..*",
                                   basename_regex = "\\.[0-9]+cells\\..*",
                                   summary_tree_suffix = "summary.tree",
@@ -560,7 +561,7 @@ model_average_patient <- function(trees_files,
       split(runs_info,by="run_names"),
       '[[',"trees_files"),
     function(trees_files,burnin_p){
-      load_condition_traces(trees_files = trees_files,burnin_p = burnin_p)
+      load_condition_traces(trees_files = trees_files,burnin_p = burnin_p,add_cenancestor = add_cenancestor)
     },
     burnin_p = burnin_p, #burnin applied here
     cl = n_cores)
@@ -648,7 +649,7 @@ model_average_patient <- function(trees_files,
   if(!is.null(out_trace_dir)) {
 
     out_trees_file <- paste(sep="/",out_trace_dir,paste0(this_patient,".trees"))
-    out_log_file <- gsub(".trees$",".log$",out_trees_file)
+    out_log_file <- gsub(".trees$",".log",out_trees_file)
 
     #Trees
     ape::write.nexus(averaged_trace$trees, file = out_trees_file)
@@ -755,6 +756,7 @@ model_average <- function(file_dir,
                           cred_mass = 0.95,
                           summarize_trees = TRUE,
                           tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
+                          add_cenancestor = FALSE,
                           n_cells_regex = ".*\\.([0-9]+)cells\\..*",
                           basename_regex = "\\.[0-9]+cells\\..*",
                           summary_tree_suffix = "summary.tree",
@@ -816,6 +818,7 @@ model_average <- function(file_dir,
                                                 cred_mass = cred_mass,
                                                 summarize_trees = summarize_trees,
                                                 tree_branch_sum_fun = tree_branch_sum_fun,
+                                                add_cenancestor = add_cenancestor,
                                                 n_cells_regex = n_cells_regex,
                                                 basename_regex = basename_regex,
                                                 summary_tree_suffix = summary_tree_suffix,

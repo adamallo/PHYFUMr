@@ -7,8 +7,8 @@ analysesFolder <- "analyses"
 mountDir <- baseDir
 #tarFile <- paste(sep="/",baseDir,analysesFilename)
 
-out_dir <- paste(sep="/",baseDir,"analyses")
-plot_dir <- paste(sep="/",baseDir,"plots/modelSelection")
+out_dir <- paste(sep="/",baseDir,"analysesFinal")
+plot_dir <- paste(sep="/",baseDir,"plots/modelSelectionFinal")
 
 dir.create(out_dir,showWarnings = FALSE,recursive = TRUE)
 dir.create(plot_dir,showWarnings = FALSE,recursive = TRUE)
@@ -17,7 +17,7 @@ dir.create(plot_dir,showWarnings = FALSE,recursive = TRUE)
 #system(paste("ratarmount",tarFile,mountDir))
 
 test <- model_selection(in_dir = paste(sep="/",mountDir,analysesFolder),
-                        file_regex = "^MLE.csv$",
+                        file_regex = "^MLE_filtered.csv$",
                         out_dir = out_dir,
                         plot_dir = plot_dir,
                         n_cells_regex = ".*s([0-9]+).*",

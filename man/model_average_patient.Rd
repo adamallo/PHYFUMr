@@ -21,6 +21,7 @@ model_average_patient(
   cred_mass = 0.95,
   summarize_trees = TRUE,
   tree_branch_sum_fun = c("mean", "median", "keep", "ca"),
+  add_cenancestor = FALSE,
   n_cells_regex = ".*\\\\.([0-9]+)cells\\\\..*",
   basename_regex = "\\\\.[0-9]+cells\\\\..*",
   summary_tree_suffix = "summary.tree",
@@ -89,6 +90,9 @@ calculating the MCC tree) or not.}
 
 \item{tree_branch_sum_fun}{summarization function for summary tree branches
 (choose from mean, median, keep, and ca). See \link{get_summary_tree}}
+
+\item{add_cenancestor}{Boolean that indicates if the cenancestor branch
+should be added to the tree traces or not}
 
 \item{n_cells_regex}{R regular expression with a group that captures the S
 number from the MLE.csv filename. Again, the default should work (see

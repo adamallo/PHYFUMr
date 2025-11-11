@@ -4,7 +4,7 @@
 \alias{load_trace}
 \title{Loads PHYFUM MCMC traces}
 \usage{
-load_trace(treefile, logfile = NULL, burnin_p = 0.1)
+load_trace(treefile, logfile = NULL, burnin_p = 0.1, add_cenancestor = FALSE)
 }
 \arguments{
 \item{treefile}{A path to a tree file containing an MCMC chain of trees}
@@ -14,6 +14,9 @@ If no path is provided, it looks for a file with the same name as the tree
 file with .log extension}
 
 \item{burnin_p}{Proportion of MCMC samples to discard as burnin}
+
+\item{add_cenancestor}{Boolean that indicates if the cenancestor branch
+should be added to the tree traces or not}
 }
 \value{
 output A phyfumr_trace object containing the multiPhylo and the table
