@@ -18,7 +18,7 @@ get_Bdata_from_XML <- function(xml_file,matrix=T){
 
   bData <- data.table::rbindlist(lapply(xmlContent$afalignment,function(thisAF){
     if(is.list(thisAF) && !is.null(thisAF$text)){
-      data.table::data.table(b=as.numeric(unlist(strsplit(split = ",",x = gsub(pattern = "\n *",replacement = "",thisAF$text)))),sample=thisAF$taxon)}
+      data.table::data.table(b=as.numeric(unlist(strsplit(split = ",",x = gsub(pattern = "\n *",replacement = "",thisAF$text)))),sample=as.numeric(thisAF$taxon))}
   }))
 
   if(matrix==T) {
