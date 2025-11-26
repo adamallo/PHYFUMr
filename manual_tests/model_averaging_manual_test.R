@@ -71,4 +71,17 @@ all_results_gathered <- model_average_gather(out_dir = out_dir,
                              n_cells_regex = ".*s([0-9]+).*",
                              basename_regex = "_s[0-9]+.*")
 
+#Reformat to old format
+library(data.table)
+summary_long <- all_results$ptable
+setnames(summary_long, old=c("meanP"), new=c("mean"))
+summary_fully_long <- melt(summary_long, id.vars = c("patient","param"), variable.name = "stat")
+summary_wide <- dcast(summary_fully_long[stat%in%c("mean","HDIUpper","HDILower")],patient~stat+param,sep = ".",value.var="value")
+summary_wide[,`:=`(full_patient=patient)]
+summary_wide[,`:=`(patient=sub("^([^_]*)_.*","\\1",full_patient),location=sub("^[^_][^_]*_([^_][^_]*)_.*","\\1",full_patient))]
+summary_wide[,`:=`(location=factor(location,levels=c("Colon","SmallIntestine","Endometrium","multiple"),labels=c("Colon","Small Intestine","Endometrium","multiple")))]
+check_write_csv(summary_wide,
+                "summaryWithHDI.csv",
+                out_dir)
+
 #system(paste("ratarmount -u",mountDir))

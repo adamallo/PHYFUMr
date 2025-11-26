@@ -633,7 +633,7 @@ model_average_patient <- function(trees_files,
                                                max_expected_samples = max_expected_samples))
   }
 
-  check_write_csv(table = pp_table,
+  check_write_csv(table = pp_table[patient==this_patient,],
                   flag = ifelse(is.null(pp_suffix) || is.null(out_dir),NULL,TRUE),
                   outdir = out_dir,
                   filename = paste(sep=patient_id_separator,this_patient,pp_suffix))
@@ -663,7 +663,7 @@ model_average_patient <- function(trees_files,
   #Selecting params to analyze
   params <- names(averaged_trace$ptable)
   params <- params[!params %in% .phyfumr_env[["not_params"]]]
-  params <- params[!params %in% detect_constants(averaged_trace$ptable,params)]
+  #params <- params[!params %in% detect_constants(averaged_trace$ptable,params)] #We are not doing any MCMC QC here so we don't mind to have constants and sometimes S may be constant
 
   #Calculating summary stats
   infun <- function(param,thedata,cred_mass){
